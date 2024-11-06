@@ -1,66 +1,179 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+# Anime Importer Project
 
-## About Laravel
+A Laravel 11 application that imports and stores data on the 100 most popular anime from the Jikan API (an unofficial MyAnimeList API). The project includes a basic API endpoint to fetch anime data in multiple languages.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Prerequisites
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Ensure you have the following installed:
+- PHP 8.3
+- Composer
+- MySQL 8
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Project Setup
 
-## Learning Laravel
+### Step 1: Clone the Repository
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Clone this repository to your local machine and navigate into the project folder.
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+```bash
+git clone <your-repo-url>
+cd animeApp
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Step 2: Set Up Environment Variables
 
-## Laravel Sponsors
+Create a copy of the `.env` file and configure it with your database credentials.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```plaintext
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=anime_app
+DB_USERNAME=root
+DB_PASSWORD=your_password
+```
 
-### Premium Partners
+### Step 3: Create the Model and Migration
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+Generate the model and migration for the `Anime` table.
 
-## Contributing
+```bash
+php artisan make:model Anime -m
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Step 4: Define Database Structure
 
-## Code of Conduct
+Open the generated migration file in `database/migrations/` and define the database structure as follows:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```php
+Schema::create('animes', function (Blueprint $table) {
+    $table->id();
+    $table->integer('mal_id')->unique();
+    $table->json('titles');
+    $table->json('slug');
+    $table->text('synopsis')->nullable();
+    $table->timestamps();
+});
+```
 
-## Security Vulnerabilities
+### Step 5: Run Migrations
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Run the migrations to create the `animes` table in your database.
 
-## License
+```bash
+php artisan migrate
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Data Import
+
+### Step 6: Create Import Command
+
+Create a custom Artisan command to import data from the Jikan API.
+
+```bash
+php artisan make:command ImportAnimeData
+```
+
+### Step 7: Implement Data Fetching and Storing Logic
+
+In `app/Console/Commands/ImportAnimeData.php`, update the `handle` method with the following code to fetch data from the Jikan API and store it in the database.
+
+```php
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Http;
+use App\Models\Anime;
+
+class ImportAnimeData extends Command
+{
+    protected $signature = 'anime:import';
+    protected $description = 'Import top 100 anime from Jikan API';
+
+    public function handle()
+    {
+        $response = Http::get('https://api.jikan.moe/v4/top/anime');
+        if ($response->failed()) {
+            $this->error('Failed to fetch anime data.');
+            return;
+        }
+
+        $animeList = $response->json()['data'];
+
+        foreach (array_slice($animeList, 0, 100) as $anime) {
+            Anime::updateOrCreate(
+                ['mal_id' => $anime['mal_id']],
+                [
+                    'titles' => json_encode(['en' => $anime['title'], 'pl' => $anime['title']], JSON_UNESCAPED_UNICODE),
+                    'slug' => json_encode([
+                        'en' => strtolower(str_replace(' ', '-', $anime['title'])),
+                        'pl' => strtolower(str_replace(' ', '-', $anime['title']))
+                    ], JSON_UNESCAPED_UNICODE),
+                    'synopsis' => $anime['synopsis'],
+                ]
+            );
+        }
+
+        $this->info('Anime data imported successfully.');
+    }
+}
+```
+
+### Step 8: Run the Import Command
+
+To fetch and store the top 100 anime from the Jikan API, use the following command:
+
+```bash
+php artisan anime:import
+```
+
+### Step 9: Define the Route
+
+In routes/web.php, add a route to create an API endpoint for fetching anime data by slug and language.
+
+```bash
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AnimeController;
+
+Route::get('/api/anime/{slug}', [AnimeController::class, 'show']);
+
+```
+
+### Step 10: Create the Anime Controller
+Step 10: Create the Anime Controller
+
+```bash
+php artisan make:controller AnimeController
+
+namespace App\Http\Controllers;
+
+use App\Models\Anime;
+use Illuminate\Http\Request;
+
+class AnimeController extends Controller
+{
+    public function show(Request $request, $slug)
+    {
+        $lang = $request->query('lang', 'en');
+        $anime = Anime::where("slug->$lang", $slug)->first();
+
+        if (!$anime) {
+            return response()->json(['error' => 'Anime not found or language mismatch'], 404);
+        }
+
+        return response()->json($anime);
+    }
+}
+
+```
+### Step 11: Test the API
+You can now test the API endpoint by accessing:
+
+```
+http://your-app-url/api/anime/{slug}?lang=pl
+```
+
+---
+
+With these steps, you should be able to set up and populate your database with anime data. Adjust `<your-repo-url>` to the actual Git repository URL if you are sharing this project.
